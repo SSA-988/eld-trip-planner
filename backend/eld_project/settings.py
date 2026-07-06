@@ -25,7 +25,8 @@ SECRET_KEY = 'django-insecure-dz_+zcv57h(9k&frnh8cvt&jtj8#48fl0=_p=1v3#ejv2%e%z3
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
+CSRF_TRUSTED_ORIGINS = ['https://eld-trip-planner-production-837a.up.railway.app', 'https://eld-trip-planner-omega-ten.vercel.app']
 
 
 # Application definition
