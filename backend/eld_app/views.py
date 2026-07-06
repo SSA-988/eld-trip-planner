@@ -18,8 +18,10 @@ def get_route(origin, destination):
     url = f"http://router.project-osrm.org/route/v1/driving/{origin[1]},{origin[0]};{destination[1]},{destination[0]}"
     params = {"overview": "full", "geometries": "geojson", "steps": "true"}
     try:
-        res = requests.get(url, params=params, timeout=10)
+        res = requests.get(url, params=params, timeout=30)
         data = res.json()
+        if "routes" not in data or len(data["routes"]) == 0:
+            return None
         route = data["routes"][0]
         return {
             "distance_miles": route["distance"] * 0.000621371,
@@ -27,6 +29,7 @@ def get_route(origin, destination):
             "geometry": route["geometry"]["coordinates"],
         }
     except Exception as e:
+        print(f"Route error: {e}")
         return None
 
 
