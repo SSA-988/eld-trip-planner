@@ -51,126 +51,89 @@ def geocode(location):
 
 
 def calculate_hos_schedule(total_miles, current_cycle_used):
-    """
-    Calculate HOS-compliant schedule and generate ELD log entries.
-    Returns list of days with duty status changes.
-    """
     remaining_cycle = MAX_CYCLE_HOURS - current_cycle_used
     miles_remaining = total_miles
-    current_hour = 0  # hours since start of trip
-    days = []
-    day_num = 1
+    current_hour = 0
     fuel_miles = 0
-
-    # Add pickup time at start
+    on_duty_today = 0
+    driving_today = 0
     events = []
+
+    # Pickup
     events.append({
         "status": "on_duty",
         "start": current_hour,
         "end": current_hour + PICKUP_DROPOFF_HOURS,
-        "location": "Pickup Location",
-        "note": "Pickup - loading"
+        "note": "Pickup - loading",
+        "location": "Pickup Location"
     })
     current_hour += PICKUP_DROPOFF_HOURS
-    on_duty_today = PICKUP_DROPOFF_HOURS
-    driving_today = 0
-    day_start_hour = 0
+    on_duty_today += PICKUP_DROPOFF_HOURS
 
-    while miles_remaining > 0:
-        # Check if we need a 34hr restart
+    max_iterations = 1000
+    iteration = 0
+
+    while miles_remaining > 0.1 and iteration < max_iterations:
+        iteration += 1
+
+        # Need 34hr restart?
         if remaining_cycle <= 0:
-            events.append({
-                "status": "off_duty",
-                "start": current_hour,
-                "end": current_hour + 34,
-                "location": "Rest Stop",
-                "note": "34-hour restart"
-            })
+            events.append({"status": "off_duty", "start": current_hour, "end": current_hour + 34, "note": "34-hour restart", "location": "Rest Stop"})
             current_hour += 34
             remaining_cycle = MAX_CYCLE_HOURS
             on_duty_today = 0
             driving_today = 0
+            continue
 
-        # Check if we've hit daily limits — need 10hr break
+        # Need 10hr rest?
         if driving_today >= MAX_DRIVING_HOURS or on_duty_today >= MAX_ON_DUTY_HOURS:
-            events.append({
-                "status": "sleeper_berth",
-                "start": current_hour,
-                "end": current_hour + MIN_REST_HOURS,
-                "location": "Rest Stop",
-                "note": "Required 10-hour rest"
-            })
+            events.append({"status": "sleeper_berth", "start": current_hour, "end": current_hour + MIN_REST_HOURS, "note": "Required 10-hour rest", "location": "Rest Stop"})
             current_hour += MIN_REST_HOURS
             on_duty_today = 0
             driving_today = 0
+            continue
 
-        # How many hours can we drive this stretch?
+        # 30 min break after 8hrs driving
+        if driving_today >= 8:
+            events.append({"status": "off_duty", "start": current_hour, "end": current_hour + 0.5, "note": "30-minute required break", "location": "Rest Area"})
+            current_hour += 0.5
+            on_duty_today += 0.5
+            driving_today = 0
+            continue
+
+        # How much can we drive?
         drive_hours_available = min(
             MAX_DRIVING_HOURS - driving_today,
             MAX_ON_DUTY_HOURS - on_duty_today,
             remaining_cycle
         )
 
-        # 30 min break required after 8hrs driving
-        if driving_today >= 8 and drive_hours_available > 0:
-            events.append({
-                "status": "off_duty",
-                "start": current_hour,
-                "end": current_hour + 0.5,
-                "location": "Rest Area",
-                "note": "30-minute required break"
-            })
-            current_hour += 0.5
-            on_duty_today += 0.5
-            drive_hours_available = min(drive_hours_available, MAX_DRIVING_HOURS - driving_today)
-
         if drive_hours_available <= 0:
             continue
 
-        # Calculate miles we can cover
-        max_miles_this_stretch = drive_hours_available * AVERAGE_SPEED_MPH
-
-        # Check fueling stop
+        # Fuel stop needed?
         miles_to_fuel = FUEL_INTERVAL_MILES - fuel_miles
-        if miles_to_fuel < max_miles_this_stretch and miles_remaining > miles_to_fuel:
-            # Drive to fuel stop
-            drive_hours = miles_to_fuel / AVERAGE_SPEED_MPH
-            events.append({
-                "status": "driving",
-                "start": current_hour,
-                "end": current_hour + drive_hours,
-                "location": "En Route",
-                "note": f"Driving ({miles_to_fuel:.0f} miles)"
-            })
+        miles_this_stretch = min(miles_remaining, drive_hours_available * AVERAGE_SPEED_MPH)
+
+        if miles_to_fuel < miles_this_stretch:
+            miles_this_stretch = miles_to_fuel
+            drive_hours = miles_this_stretch / AVERAGE_SPEED_MPH
+            events.append({"status": "driving", "start": current_hour, "end": current_hour + drive_hours, "note": f"Driving ({miles_this_stretch:.0f} miles)", "location": "En Route"})
             current_hour += drive_hours
             driving_today += drive_hours
             on_duty_today += drive_hours
             remaining_cycle -= drive_hours
-            miles_remaining -= miles_to_fuel
+            miles_remaining -= miles_this_stretch
             fuel_miles = 0
 
-            # Fuel stop (on-duty, not driving)
-            events.append({
-                "status": "on_duty",
-                "start": current_hour,
-                "end": current_hour + 0.5,
-                "location": "Fuel Stop",
-                "note": "Fueling stop"
-            })
+            # Fuel stop
+            events.append({"status": "on_duty", "start": current_hour, "end": current_hour + 0.5, "note": "Fueling stop", "location": "Fuel Stop"})
             current_hour += 0.5
             on_duty_today += 0.5
             remaining_cycle -= 0.5
         else:
-            # Drive remaining miles or until limit
-            miles_this_stretch = min(miles_remaining, max_miles_this_stretch)
             drive_hours = miles_this_stretch / AVERAGE_SPEED_MPH
-            events.append({
-                "status": "driving",
-                "start": current_hour,
-                "end": current_hour + drive_hours,
-                "location": "En Route",
-                "note": f"Driving ({miles_this_stretch:.0f} miles)"
-            })
+            events.append({"status": "driving", "start": current_hour, "end": current_hour + drive_hours, "note": f"Driving ({miles_this_stretch:.0f} miles)", "location": "En Route"})
             current_hour += drive_hours
             driving_today += drive_hours
             on_duty_today += drive_hours
@@ -179,35 +142,23 @@ def calculate_hos_schedule(total_miles, current_cycle_used):
             miles_remaining -= miles_this_stretch
 
     # Dropoff
-    events.append({
-        "status": "on_duty",
-        "start": current_hour,
-        "end": current_hour + PICKUP_DROPOFF_HOURS,
-        "location": "Dropoff Location",
-        "note": "Dropoff - unloading"
-    })
+    events.append({"status": "on_duty", "start": current_hour, "end": current_hour + PICKUP_DROPOFF_HOURS, "note": "Dropoff - unloading", "location": "Dropoff Location"})
     current_hour += PICKUP_DROPOFF_HOURS
 
     # Final rest
-    events.append({
-        "status": "off_duty",
-        "start": current_hour,
-        "end": current_hour + MIN_REST_HOURS,
-        "location": "Dropoff Location",
-        "note": "End of trip rest"
-    })
+    events.append({"status": "off_duty", "start": current_hour, "end": current_hour + MIN_REST_HOURS, "note": "End of trip rest", "location": "Dropoff Location"})
+    current_hour += MIN_REST_HOURS
 
-    # Group events into days (24hr blocks)
-    total_hours = current_hour + MIN_REST_HOURS
-    num_days = math.ceil(total_hours / 24)
-
+    # Group into days
+    import math
+    num_days = math.ceil(current_hour / 24)
     daily_logs = []
+
     for day in range(num_days):
         day_start = day * 24
         day_end = day_start + 24
         day_events = []
         for event in events:
-            # Clip event to this day
             start = max(event["start"], day_start) - day_start
             end = min(event["end"], day_end) - day_start
             if end > start:
