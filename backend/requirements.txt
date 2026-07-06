@@ -1,8 +1,6 @@
-cat > backend/requirements.txt << 'EOF'
 django
 djangorestframework
 django-cors-headers
 requests
 gunicorn
 whitenoise
-EOF
