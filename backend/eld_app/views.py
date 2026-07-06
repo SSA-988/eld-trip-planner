@@ -2,6 +2,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 import requests
 import math
+import time
 
 # FMCSA HOS Constants (70hr/8day property carrier)
 MAX_DRIVING_HOURS = 11
@@ -46,6 +47,7 @@ def geocode(location):
         return None
     except:
         return None
+        
 
 
 def calculate_hos_schedule(total_miles, current_cycle_used):
@@ -241,7 +243,9 @@ def plan_trip(request):
 
     # Geocode all locations
     current_coords = geocode(current_location)
+    time.sleep(1)
     pickup_coords = geocode(pickup_location)
+    time.sleep(1)
     dropoff_coords = geocode(dropoff_location)
 
     if not all([current_coords, pickup_coords, dropoff_coords]):
